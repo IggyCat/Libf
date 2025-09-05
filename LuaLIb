@@ -249,10 +249,162 @@ function DrawingLib.new(drawingType)
         textMeta.__tostring = function() return "Drawing" end
         
         return setmetatable({__type = "Drawing Object"}, textMeta)
-    end
     
-    -- Add support for other drawing types (Circle, Square, Image, Quad, Triangle) here
-    error("Unsupported drawing type: " .. tostring(drawingType))
+    elseif drawingType == "Square" or drawingType == "Quad" then
+        -- Square and Quad are essentially the same - a rectangle
+        local squareObj = {
+            Position = Vector2.zero,
+            Size = Vector2.zero,
+            Filled = true,
+            Thickness = 1,
+            Visible = true,
+            ZIndex = 0,
+            Transparency = 1,
+            Color = Color3.new()
+        }
+        
+        local squareFrame = safeInstance("Frame", drawingUI)
+        squareFrame.Name = "DrawingSquare_" .. drawingIndex
+        squareFrame.AnchorPoint = Vector2.new(0, 0)
+        squareFrame.BorderSizePixel = 0
+        squareFrame.BackgroundColor3 = squareObj.Color
+        squareFrame.Visible = squareObj.Visible
+        squareFrame.ZIndex = squareObj.ZIndex
+        squareFrame.BackgroundTransparency = squareObj.Filled and convertTransparency(squareObj.Transparency) or 1
+        
+        local uiStroke = safeInstance("UIStroke", squareFrame)
+        uiStroke.Thickness = squareObj.Thickness
+        uiStroke.Color = squareObj.Color
+        uiStroke.Transparency = convertTransparency(squareObj.Transparency)
+        uiStroke.Enabled = not squareObj.Filled
+        
+        -- Update square position and size
+        local function updateSquare()
+            squareFrame.Position = UDim2.fromOffset(squareObj.Position.X, squareObj.Position.Y)
+            squareFrame.Size = UDim2.fromOffset(squareObj.Size.X, squareObj.Size.Y)
+        end
+        
+        updateSquare()
+        
+        -- Store reference to GUI object
+        squareObj._guiObject = squareFrame
+        
+        local squareMeta = {}
+        squareMeta.__index = function(self, index)
+            if index == "Remove" or index == "Destroy" then
+                return function()
+                    if squareFrame then
+                        squareFrame:Destroy()
+                    end
+                    setmetatable(self, nil)
+                end
+            end
+            return squareObj[index]
+        end
+        
+        squareMeta.__newindex = function(self, index, value)
+            if squareObj[index] == nil then return end
+            
+            squareObj[index] = value
+            
+            if index == "Position" or index == "Size" then
+                updateSquare()
+            elseif index == "Filled" then
+                squareFrame.BackgroundTransparency = value and convertTransparency(squareObj.Transparency) or 1
+                uiStroke.Enabled = not value
+            elseif index == "Thickness" then
+                uiStroke.Thickness = value
+            elseif index == "Visible" then
+                squareFrame.Visible = value
+            elseif index == "ZIndex" then
+                squareFrame.ZIndex = value
+            elseif index == "Transparency" then
+                squareFrame.BackgroundTransparency = squareObj.Filled and convertTransparency(value) or 1
+                uiStroke.Transparency = convertTransparency(value)
+            elseif index == "Color" then
+                squareFrame.BackgroundColor3 = value
+                uiStroke.Color = value
+            end
+        end
+        
+        squareMeta.__tostring = function() return "Drawing" end
+        
+        return setmetatable({__type = "Drawing Object"}, squareMeta)
+    
+    elseif drawingType == "Image" then
+        local imageObj = {
+            Position = Vector2.zero,
+            Size = Vector2.zero,
+            Data = "",
+            Transparency = 1,
+            Visible = true,
+            ZIndex = 0
+        }
+        
+        local imageLabel = safeInstance("ImageLabel", drawingUI)
+        imageLabel.Name = "DrawingImage_" .. drawingIndex
+        imageLabel.AnchorPoint = Vector2.new(0, 0)
+        imageLabel.BorderSizePixel = 0
+        imageLabel.BackgroundTransparency = 1
+        imageLabel.Visible = imageObj.Visible
+        imageLabel.ZIndex = imageObj.ZIndex
+        imageLabel.ImageTransparency = convertTransparency(imageObj.Transparency)
+        
+        -- Update image position and size
+        local function updateImage()
+            imageLabel.Position = UDim2.fromOffset(imageObj.Position.X, imageObj.Position.Y)
+            imageLabel.Size = UDim2.fromOffset(imageObj.Size.X, imageObj.Size.Y)
+        end
+        
+        updateImage()
+        
+        -- Store reference to GUI object
+        imageObj._guiObject = imageLabel
+        
+        local imageMeta = {}
+        imageMeta.__index = function(self, index)
+            if index == "Remove" or index == "Destroy" then
+                return function()
+                    if imageLabel then
+                        imageLabel:Destroy()
+                    end
+                    setmetatable(self, nil)
+                end
+            end
+            return imageObj[index]
+        end
+        
+        imageMeta.__newindex = function(self, index, value)
+            if imageObj[index] == nil then return end
+            
+            imageObj[index] = value
+            
+            if index == "Position" or index == "Size" then
+                updateImage()
+            elseif index == "Data" then
+                -- Try to load the image data
+                local success = pcall(function()
+                    imageLabel.Image = value
+                end)
+                if not success then
+                    warn("Failed to load image data: " .. tostring(value))
+                end
+            elseif index == "Transparency" then
+                imageLabel.ImageTransparency = convertTransparency(value)
+            elseif index == "Visible" then
+                imageLabel.Visible = value
+            elseif index == "ZIndex" then
+                imageLabel.ZIndex = value
+            end
+        end
+        
+        imageMeta.__tostring = function() return "Drawing" end
+        
+        return setmetatable({__type = "Drawing Object"}, imageMeta)
+    
+    else
+        error("Unsupported drawing type: " .. tostring(drawingType), 2)
+    end
 end
 
 getgenv().Drawing = DrawingLib
@@ -272,11 +424,15 @@ getgenv().cleardrawcache = function()
 end
 
 getgenv().getrenderproperty = function(obj, prop)
-    assert(getgenv().isrenderobj(obj), "Object must be a Drawing", 2)
+    if not getgenv().isrenderobj(obj) then
+        error("Object must be a Drawing", 2)
+    end
     return obj[prop]
 end
 
 getgenv().setrenderproperty = function(obj, prop, val)
-    assert(getgenv().isrenderobj(obj), "Object must be a Drawing", 2)
+    if not getgenv().isrenderobj(obj) then
+        error("Object must be a Drawing", 2)
+    end
     obj[prop] = val
 end

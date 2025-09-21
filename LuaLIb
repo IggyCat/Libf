@@ -1,4 +1,4 @@
-local drawingUI = true
+local drawingUI = nil
 task.spawn(function()
     repeat task.wait() until game and game:GetService("CoreGui")
     
